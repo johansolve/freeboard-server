@@ -66,6 +66,7 @@ public class SerialPortReader implements Processor {
 
 	private LinkedBlockingQueue<String> queue;
 	private SerialReader serialReader;
+	
 
 	public SerialPortReader() {
 		super();
@@ -76,19 +77,17 @@ public class SerialPortReader implements Processor {
 	 * Opens a connection to the serial port, and starts two threads, one to read, one to write.
 	 * A background thread looks for new/lost USB devices and (re)attaches them
 	 * 
-	 * NOTE: This uses nrjavaserial-3.7.7.jar built from the src, with a few minor mods to deal with timeouts etc
-	 * see http://code.google.com/p/nrjavaserial/
-	 * Since the last maven version is 3.7.5, you will need to build it, which will add it to the local maven respoitory!!
 	 * 
 	 * @param portName
 	 * @throws Exception
 	 */
-	void connect(String portName) throws Exception {
+	void connect(String portName, int baudRate) throws Exception {
 		this.portName = portName;
 		this.portFile = new File(portName);
 		CommPortIdentifier portid = CommPortIdentifier.getPortIdentifier(portName);
 		serialPort = (SerialPort) portid.open("FreeboardSerialReader", 100);
-		serialPort.setSerialPortParams(38400, 8, 1, 0);
+		//TODO: change baud rate to config based setup
+		serialPort.setSerialPortParams(baudRate, 8, 1, 0);
 		serialReader = new SerialReader();
 		serialPort.enableReceiveTimeout(1000);
 		serialPort.notifyOnDataAvailable(true);
@@ -185,7 +184,7 @@ public class SerialPortReader implements Processor {
 									//map it if we havent already
 									if (!mapped && uid.matcher(lineStr).matches()) {
 										// add to map
-										logger.debug(portName + ":Serial Recieved:" + lineStr);
+										logger.debug(portName + ":Serial Received:" + lineStr);
 										String type = StringUtils.substringBetween(lineStr, Constants.UID + ":", ",");
 										if (type != null) {
 											logger.debug(portName + ":  device name:" + type);

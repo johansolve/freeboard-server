@@ -14,6 +14,7 @@ sudo mount -tvfat -oasync,nodev,noatime,nodiratime,gid=floppy,umask=000 /dev/sda
 
 # start script for freeboard
 FREEBOARD_HOME=/home/pi/freeboard
+#FREEBOARD_HOME=.
 
 JAR=freeboard-server.jar
 #
@@ -41,7 +42,7 @@ fi
 export LD_LIBRARY_PATH=$FREEBOARD_HOME/jna
 
 #start server
-JAVA_HOME=/home/pi/jdk1.7.0_06
+JAVA_HOME=/home/pi/jdk1.8.0
 export JAVA_HOME
 JAVA=$JAVA_HOME/bin/java
 EXT="-Djava.util.Arrays.useLegacyMergeSort=true"

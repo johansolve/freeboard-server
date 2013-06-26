@@ -220,14 +220,14 @@ public class ChartProcessor {
 			System.out.print(snippet+"\n");
 		}
         logger.debug(snippet);
-		//add it to local freeboard.txt 
+		//add it to local freeboard.txt
         File layers = new File(dir,"freeboard.txt");
         FileUtils.writeStringToFile(layers, snippet);
         //now zip the result
-      //now zip the result
         System.out.print("Zipping directory...\n");
-		//ZipUtils.zip(dir, new File(dir.getParentFile(),chartName+".zip"));
-		System.out.print("Zipping directory complete\n");
+		ZipUtils.zip(dir, new File(dir.getParentFile(),chartName+".zip"));
+		System.out.print("Zipping directory complete, in "+new File(dir.getParentFile(),chartName+".zip").getAbsolutePath()+"\n");
+		System.out.print("Conversion of "+chartName+" was completed successfully!\n");
 	}
 
 	/**
@@ -242,11 +242,11 @@ public class ChartProcessor {
 	 * @throws InterruptedException 
 	 */
 	private void executeGdal( File chartFile, String chartName, List<String> argList, List<String> tilesList ) throws IOException, InterruptedException {
-		File dir = new File(config.getProperty(Constants.MAPCACHE_RESOURCE));
+		File processDir = chartFile.getParentFile();
 		//mkdir $1
 		//gdal_translate -of vrt -expand rgba $1.kap temp.vrt
 		 ProcessBuilder pb = new ProcessBuilder(argList);
-		 pb.directory(dir);
+		 pb.directory(processDir);
 		 //pb.inheritIO();
 		 if(manager){
 			 ForkWorker fork = new ForkWorker(textArea, pb);
@@ -269,10 +269,10 @@ public class ChartProcessor {
 			 }
 		 }
 		//gdal2tiles.py temp.vrt $1
-		 File tileDir = new File(dir,chartName);
+		 File tileDir = new File(processDir,chartName);
 		 tileDir.mkdir();
 		 pb = new ProcessBuilder("gdal2tiles.py", "temp.vrt", chartName);
-		 pb.directory(dir);
+		 pb.directory(processDir);
 		 //pb.inheritIO();
 		 if(manager){
 			 ForkWorker fork = new ForkWorker(textArea, pb);
