@@ -29,6 +29,9 @@ import java.util.concurrent.ConcurrentMap;
 import net.sf.marineapi.nmea.event.SentenceEvent;
 import net.sf.marineapi.nmea.event.SentenceListener;
 import net.sf.marineapi.nmea.parser.SentenceFactory;
+import net.sf.marineapi.nmea.parser.XDRValue;
+import net.sf.marineapi.nmea.sentence.BVESentence;
+import net.sf.marineapi.nmea.sentence.DepthSentence;
 import net.sf.marineapi.nmea.sentence.HeadingSentence;
 import net.sf.marineapi.nmea.sentence.MWVSentence;
 import net.sf.marineapi.nmea.sentence.PositionSentence;
@@ -36,6 +39,7 @@ import net.sf.marineapi.nmea.sentence.RMCSentence;
 import net.sf.marineapi.nmea.sentence.Sentence;
 import net.sf.marineapi.nmea.sentence.SentenceId;
 import net.sf.marineapi.nmea.sentence.VHWSentence;
+import net.sf.marineapi.nmea.sentence.XDRSentence;
 import net.sf.marineapi.nmea.util.CompassPoint;
 import nz.co.fortytwo.freeboard.server.util.Constants;
 import nz.co.fortytwo.freeboard.server.util.Util;
@@ -43,6 +47,7 @@ import nz.co.fortytwo.freeboard.server.util.Util;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.log4j.Logger;
 
 /**
  * Processes NMEA sentences in the body of a message, firing events to interested listeners
@@ -52,6 +57,7 @@ import org.apache.commons.lang3.StringUtils;
  */
 public class NMEAProcessor extends FreeboardProcessor implements Processor, FreeboardHandler {
 
+	private static Logger logger = Logger.getLogger(NMEAProcessor.class);
 	private static final String DISPATCH_ALL = "DISPATCH_ALL";
 
 	// map of sentence listeners
@@ -71,18 +77,19 @@ public class NMEAProcessor extends FreeboardProcessor implements Processor, Free
 		exchange.getIn().setBody(map);
 	}
 
-	@Override
+	// @Override
 	public HashMap<String, Object> handle(HashMap<String, Object> map) {
 		// so we have a string
 		String bodyStr = (String) map.get(Constants.NMEA);
 		if (StringUtils.isNotBlank(bodyStr)) {
 			try {
-				//dont need the NMEA now
+				logger.debug("Processing NMEA:"+bodyStr);
+				// dont need the NMEA now
 				map.remove(Constants.NMEA);
 				Sentence sentence = SentenceFactory.getInstance().createParser(bodyStr);
 				fireSentenceEvent(map, sentence);
 			} catch (Exception e) {
-				// e.printStackTrace();
+				e.printStackTrace();
 			}
 		}
 		return map;
@@ -152,9 +159,11 @@ public class NMEAProcessor extends FreeboardProcessor implements Processor, Free
 	 *            sentence string.
 	 */
 	private void fireSentenceEvent(HashMap<String, Object> map, Sentence sentence) {
-		if (!sentence.isValid())
+		if (!sentence.isValid()){
+			logger.warn("NMEA Sentence is invalid:"+sentence.toSentence());
 			return;
-
+		}
+		//TODO: Why am I creating all these lists?
 		String type = sentence.getSentenceId();
 		Set<SentenceListener> list = new HashSet<SentenceListener>();
 
@@ -171,6 +180,7 @@ public class NMEAProcessor extends FreeboardProcessor implements Processor, Free
 				sl.sentenceRead(se);
 			} catch (Exception e) {
 				// ignore listener failures
+				e.printStackTrace();
 			}
 		}
 
@@ -213,6 +223,7 @@ public class NMEAProcessor extends FreeboardProcessor implements Processor, Free
 			public void sentenceRead(SentenceEvent evt) {
 				// Exchange exchange = (Exchange) evt.getSource();
 				// StringBuilder body = new StringBuilder();
+				@SuppressWarnings("unchecked")
 				HashMap<String, Object> map = (HashMap<String, Object>) evt.getSource();
 				if (evt.getSentence() instanceof PositionSentence) {
 					PositionSentence sen = (PositionSentence) evt.getSentence();
@@ -242,9 +253,9 @@ public class NMEAProcessor extends FreeboardProcessor implements Processor, Free
 				if (evt.getSentence() instanceof HeadingSentence) {
 					HeadingSentence sen = (HeadingSentence) evt.getSentence();
 					if (sen.isTrue()) {
-						map.put(Constants.COG, sen.getHeading());
+						map.put(Constants.COURSE_OVER_GND, sen.getHeading());
 					} else {
-						map.put(Constants.MGH, sen.getHeading());
+						map.put(Constants.MAG_HEADING, sen.getHeading());
 					}
 				}
 				if (evt.getSentence() instanceof RMCSentence) {
@@ -252,16 +263,16 @@ public class NMEAProcessor extends FreeboardProcessor implements Processor, Free
 					Util.checkTime(sen);
 
 					previousSpeed = Util.movingAverage(ALPHA, previousSpeed, sen.getSpeed());
-					map.put(Constants.SOG, previousSpeed);
+					map.put(Constants.SPEED_OVER_GND, previousSpeed);
 				}
 				if (evt.getSentence() instanceof VHWSentence) {
 					// ;
 					VHWSentence sen = (VHWSentence) evt.getSentence();
 					previousSpeed = Util.movingAverage(ALPHA, previousSpeed, sen.getSpeedKnots());
-					map.put(Constants.SOG, previousSpeed);
+					map.put(Constants.SPEED_OVER_GND, previousSpeed);
 
-					map.put(Constants.MGH, sen.getMagneticHeading());
-					map.put(Constants.COG, sen.getHeading());
+					map.put(Constants.MAG_HEADING, sen.getMagneticHeading());
+					map.put(Constants.COURSE_OVER_GND, sen.getHeading());
 
 				}
 
@@ -279,12 +290,76 @@ public class NMEAProcessor extends FreeboardProcessor implements Processor, Free
 					// } else {
 					// relative to bow
 					double angle = sen.getAngle();
-					map.put(Constants.WDA, angle);
-					map.put(Constants.WSA, sen.getSpeed());
-					map.put(Constants.WSU, sen.getSpeedUnit());
+					map.put(Constants.WIND_DIR_APPARENT, angle);
+					map.put(Constants.WIND_SPEED_APPARENT, sen.getSpeed());
+					map.put(Constants.WIND_SPEED_UNITS, sen.getSpeedUnit());
 					// }
 				}
+				// Cruzpro BVE sentence
+				if (evt.getSentence() instanceof BVESentence) {
+					BVESentence sen = (BVESentence) evt.getSentence();
+					if (sen.isFuelGuage()) {
+						map.put(Constants.FUEL_REMAINING, sen.getFuelRemaining());
+						map.put(Constants.FUEL_USE_RATE, sen.getFuelUseRateUnitsPerHour());
+						map.put(Constants.FUEL_USED, sen.getFuelUsedOnTrip());
+					}
+					if (sen.isEngineRpm()) {
+						map.put(Constants.ENGINE_RPM, sen.getEngineRpm());
+						map.put(Constants.ENGINE_HOURS, sen.getEngineHours());
+						map.put(Constants.ENGINE_MINUTES, sen.getEngineMinutes());
 
+					}
+					if (sen.isTempGuage()) {
+						map.put(Constants.ENGINE_TEMP, sen.getEngineTemp());
+						map.put(Constants.ENGINE_VOLTS, sen.getVoltage());
+						// map.put(Constants.ENGINE_TEMP_HIGH_ALARM, sen.getHighTempAlarmValue());
+						// map.put(Constants.ENGINE_TEMP_LOW_ALARM, sen.getLowTempAlarmValue());
+
+					}
+					if (sen.isPressureGuage()) {
+						map.put(Constants.ENGINE_OIL_PRESSURE, sen.getPressure());
+						// map.put(Constants.ENGINE_PRESSURE_HIGH_ALARM, sen.getHighPressureAlarmValue());
+						// map.put(Constants.ENGINE_PRESSURE_LOW_ALARM, sen.getLowPressureAlarmValue());
+
+					}
+
+				}
+				if (evt.getSentence() instanceof DepthSentence) {
+					DepthSentence sen = (DepthSentence) evt.getSentence();
+					//in meters
+					map.put(Constants.DEPTH_BELOW_TRANSDUCER, sen.getDepth());
+				}
+				// Cruzpro YXXDR sentence
+				//from Cruzpro - The fields in the YXXDR sentence are always from the same "critical" functions, in order:
+					//RPM
+					//Battery #1 Volts
+					//Depth
+					//Oil Pressure
+					//Engine Temperature
+				//freeboard.nmea.YXXDR.MaxVu110=RPM,EVV,DBT,EPP,ETT
+				if (evt.getSentence() instanceof XDRSentence) {
+					XDRSentence sen = (XDRSentence) evt.getSentence();
+					
+					if(StringUtils.isNotBlank(sen.getDevice())){
+						try {
+							String key = Util.getConfig(null).getProperty(Constants.NMEA_XDR+sen.getTalkerId()+Constants.XDR+sen.getDevice());
+							String[] keys = key.split(",");
+							List<XDRValue> values = sen.getValues();
+							if(values.size()==keys.length){
+								//iterate through the values assigning to Freeboard keys
+								for(int x=0;x<keys.length;x++){
+									if(StringUtils.isNotBlank(keys[x])){
+										map.put(keys[x], values.get(x).getValue());
+									}
+								}
+							}
+						
+						} catch (Exception e) {
+							logger.debug(e.getMessage(),e);
+						}
+					}
+				}
+				
 			}
 
 			public void readingStopped() {
